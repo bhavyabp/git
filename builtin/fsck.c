@@ -233,7 +233,7 @@ static void mark_unreachable_referents(const struct object_id *oid)
 			object_as_type(obj, type, 0);
 	}
 
-	options.walk = mark_used;
+	options.objs_options.walk = mark_used;
 	fsck_walk(obj, NULL, &options);
 	if (obj->type == OBJ_TREE)
 		free_tree_buffer((struct tree *)obj);
@@ -896,6 +896,21 @@ static int check_pack_rev_indexes(struct repository *r, int show_progress)
 	return res;
 }
 
+static void fsck_refs(void)
+{
+	struct child_process refs_verify = CHILD_PROCESS_INIT;
+	child_process_init(&refs_verify);
+	refs_verify.git_cmd = 1;
+	strvec_pushl(&refs_verify.args, "refs", "verify", NULL);
+	if (verbose)
+		strvec_push(&refs_verify.args, "--verbose");
+	if (check_strict)
+		strvec_push(&refs_verify.args, "--strict");
+
+	if (run_command(&refs_verify))
+		errors_found |= ERROR_REFS;
+}
+
 static char const * const fsck_usage[] = {
 	N_("git fsck [--tags] [--root] [--unreachable] [--cache] [--no-reflogs]\n"
 	   "         [--[no-]full] [--strict] [--verbose] [--lost-found]\n"
@@ -936,9 +951,9 @@ int cmd_fsck(int argc, const char **argv, const char *prefix)
 
 	argc = parse_options(argc, argv, prefix, fsck_opts, fsck_usage, 0);
 
-	fsck_walk_options.walk = mark_object;
-	fsck_obj_options.walk = mark_used;
-	fsck_obj_options.error_func = fsck_error_func;
+	fsck_walk_options.objs_options.walk = mark_object;
+	fsck_obj_options.objs_options.walk = mark_used;
+	fsck_obj_options.objs_options.error_func = fsck_error_func;
 	if (check_strict)
 		fsck_obj_options.strict = 1;
 
@@ -1064,6 +1079,8 @@ int cmd_fsck(int argc, const char **argv, const char *prefix)
 		errors_found |= ERROR_BITMAP;
 
 	check_connectivity();
+
+	fsck_refs();
 
 	if (the_repository->settings.core_commit_graph) {
 		struct child_process commit_graph_verify = CHILD_PROCESS_INIT;
