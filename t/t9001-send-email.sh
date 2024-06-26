@@ -1299,6 +1299,36 @@ test_expect_success $PREREQ 'utf8 sender is not duplicated' '
 	test_line_count = 1 msgfrom
 '
 
+test_expect_success $PREREQ 'setup expect for cc list' "
+cat >expected-cc <<\EOF
+!recipient@example.com!
+!author@example.com!
+!one@example.com!
+!odd_?=mail@example.com!
+!thor.au@example.com!
+EOF
+"
+
+test_expect_success $PREREQ 'cc list is sanitized' '
+	clean_fake_sendmail &&
+	test_commit weird_cc_body &&
+	test_when_finished "git reset --hard HEAD^" &&
+	git commit --amend -F - <<-EOF &&
+	Test Cc: sanitization.
+
+	Cc: Person, One <one@example.com>
+	Reviewed-by: Füñný Nâmé <odd_?=mail@example.com>
+	Signed-off-by: A. U. Thor <thor.au@example.com>
+	EOF
+	git send-email -1 --to=recipient@example.com \
+		--smtp-server="$(pwd)/fake.sendmail" >actual-show-all-headers &&
+	test_cmp expected-cc commandline1 &&
+	grep "^(body) Adding cc: \"Person, One\" <one@example.com>" actual-show-all-headers &&
+	grep "^(body) Adding cc: =?UTF-8?q?F=C3=BC=C3=B1n=C3=BD=20N=C3=A2m=C3=A9?="\
+" <odd_?=mail@example.com>" actual-show-all-headers &&
+	grep "^(body) Adding cc: \"A. U. Thor\" <thor.au@example.com>" actual-show-all-headers
+'
+
 test_expect_success $PREREQ 'sendemail.composeencoding works' '
 	clean_fake_sendmail &&
 	git config sendemail.composeencoding iso-8859-1 &&
